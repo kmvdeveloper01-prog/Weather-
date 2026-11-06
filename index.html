@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#102a56">
+  <meta name="description" content="Skycast weather forecast">
+  <link rel="manifest" href="manifest.webmanifest">
+  <title>Skycast Weather</title>
+  <style>
+    *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:linear-gradient(155deg,#102a56,#2466a8 58%,#76b9d2);color:#fff;min-height:100vh}
+    main{max-width:760px;margin:auto;padding:22px 16px 40px}.top{display:flex;justify-content:space-between;align-items:center;gap:12px}
+    h1{font-size:27px;margin:0}.sub{opacity:.8;font-size:13px}.search{display:flex;gap:8px;margin:22px 0}
+    input,button{font:inherit;border:0;border-radius:13px;padding:13px}input{min-width:0;flex:1;background:#fff;color:#17243b}
+    button{background:#ffcf58;color:#17243b;font-weight:700;cursor:pointer}button.secondary{background:#ffffff20;color:#fff;border:1px solid #ffffff55}
+    .panel{background:#ffffff19;border:1px solid #ffffff30;border-radius:22px;padding:20px;backdrop-filter:blur(8px);box-shadow:0 10px 30px #071b3a22}
+    .hero{margin-top:10px}.place{font-size:19px;font-weight:700}.condition{opacity:.9;margin-top:4px}.temp{font-size:68px;line-height:1.1;font-weight:750;margin:12px 0}
+    .details{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}.detail{background:#ffffff17;border-radius:14px;padding:12px}.detail b{display:block;font-size:18px;margin-top:5px}
+    h2{font-size:18px;margin:24px 0 12px}.forecast{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}.day{background:#ffffff17;border-radius:15px;padding:12px 5px;text-align:center;font-size:12px}.day strong{display:block;font-size:17px;margin:8px 0}
+    .status{min-height:22px;font-size:13px;opacity:.9;margin-top:10px}.foot{font-size:11px;opacity:.7;text-align:center;margin-top:22px}
+    @media(max-width:420px){.details{grid-template-columns:repeat(2,1fr)}.forecast{grid-template-columns:repeat(5,minmax(0,1fr))}.temp{font-size:60px}}
+  </style>
+</head>
+<body>
+<main>
+  <div class="top"><div><h1>☀️ Skycast</h1><div class="sub">Weather at a glance</div></div><button class="secondary" id="unitBtn">°C / °F</button></div>
+  <form class="search" id="searchForm"><input id="cityInput" placeholder="Search city (e.g. Nellore)" value="Nellore" aria-label="City name"><button>Search</button></form>
+  <button class="secondary" id="locBtn">◎ Use my location</button>
+  <div class="status" id="status" role="status">Loading weather…</div>
+  <section class="panel hero">
+    <div class="place" id="place">Nellore</div><div class="condition" id="condition">—</div>
+    <div class="temp" id="temp">--°</div><div id="feels">Feels like --°</div>
+    <div class="details">
+      <div class="detail">💧 Humidity<b id="humidity">--%</b></div>
+      <div class="detail">💨 Wind<b id="wind">-- km/h</b></div>
+      <div class="detail">🌧️ Rain chance<b id="rain">--%</b></div>
+      <div class="detail">🌅 Sunrise<b id="sunrise">--:--</b></div>
+      <div class="detail">🌇 Sunset<b id="sunset">--:--</b></div>
+      <div class="detail">🌡️ Today<b id="range">-- / --°</b></div>
+    </div>
+  </section>
+  <h2>5-day forecast</h2><section class="forecast" id="forecast"></section>
+  <div class="foot">Weather data: Open-Meteo · Internet connection required</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let fahrenheit=false, current=null, currentPlace="Nellore";
+const codes={0:"Clear sky",1:"Mainly clear",2:"Partly cloudy",3:"Overcast",45:"Fog",48:"Depositing rime fog",51:"Light drizzle",53:"Drizzle",55:"Dense drizzle",61:"Slight rain",63:"Rain",65:"Heavy rain",71:"Light snow",73:"Snow",75:"Heavy snow",80:"Rain showers",81:"Showers",82:"Heavy showers",95:"Thunderstorm",96:"Thunderstorm with hail",99:"Heavy thunderstorm"};
+function celsius(v){return fahrenheit?Math.round(v*9/5+32):Math.round(v)}
+function temp(v){return celsius(v)+"°"+(fahrenheit?"F":"C")}
+function time(v){return v?v.slice(11,16):"--:--"}
+async function geocode(city){
+ const r=await fetch("https://geocoding-api.open-meteo.com/v1/search?name="+encodeURIComponent(city)+"&count=1&language=en&format=json");
+ const d=await r.json(); if(!d.results?.length) throw Error("City not found. Try another spelling.");
+ return d.results[0];
+}
+async function loadWeather(lat,lon,label){
+ $("status").textContent="Getting latest forecast…";
+ const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m&hourly=precipitation_probability&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=5&timezone=auto`;
+ const r=await fetch(url); if(!r.ok) throw Error("Weather service unavailable. Please try again.");
+ current=await r.json(); currentPlace=label; render(); $("status").textContent="Updated just now";
+}
+function render(){
+ const d=current, c=d.current, day=d.daily;
+ $("place").textContent=currentPlace; $("condition").textContent=codes[c.weather_code]||"Weather";
+ $("temp").textContent=temp(c.temperature_2m); $("feels").textContent="Feels like "+temp(c.apparent_temperature);
+ $("humidity").textContent=c.relative_humidity_2m+"%"; $("wind").textContent=Math.round(c.wind_speed_10m)+" km/h";
+ const hourIndex=d.hourly.time.findIndex(t=>t>=c.time);
+ $("rain").textContent=(d.hourly.precipitation_probability[Math.max(0,hourIndex)]??0)+"%";
+ $("sunrise").textContent=time(day.sunrise[0]); $("sunset").textContent=time(day.sunset[0]);
+ $("range").textContent=temp(day.temperature_2m_max[0])+" / "+temp(day.temperature_2m_min[0]);
+ $("forecast").innerHTML=day.time.map((date,i)=>`<div class="day">${i===0?"Today":new Date(date+"T12:00:00").toLocaleDateString("en",{weekday:"short"})}<strong>${({0:"☀️",1:"🌤️",2:"⛅",3:"☁️",45:"🌫️",51:"🌦️",61:"🌧️",63:"🌧️",80:"🌦️",95:"⛈️"})[day.weather_code[i]]||"🌤️"}</strong>${temp(day.temperature_2m_max[i])}<br><span style="opacity:.75">${temp(day.temperature_2m_min[i])}</span></div>`).join("");
+}
+async function searchCity(city){try{$("status").textContent="Searching…";const p=await geocode(city);await loadWeather(p.latitude,p.longitude,[p.name,p.admin1,p.country].filter(Boolean).join(", "));}catch(e){$("status").textContent=e.message;}}
+$("searchForm").addEventListener("submit",e=>{e.preventDefault();if($("cityInput").value.trim())searchCity($("cityInput").value.trim());});
+$("locBtn").addEventListener("click",()=>{if(!navigator.geolocation){$("status").textContent="Location is not supported by this browser.";return;}$("status").textContent="Finding your location…";navigator.geolocation.getCurrentPosition(p=>loadWeather(p.coords.latitude,p.coords.longitude,"Your location").catch(e=>$("status").textContent=e.message),()=>{$("status").textContent="Location permission denied. Search for a city instead.";});});
+$("unitBtn").addEventListener("click",()=>{fahrenheit=!fahrenheit;if(current)render();});
+searchCity("Nellore");
+if("serviceWorker" in navigator && location.protocol.startsWith("http"))navigator.serviceWorker.register("./service-worker.js").catch(()=>{});
+</script>
+</body></html>
